@@ -15,9 +15,12 @@
  */
 package org.springframework.cloud.release.internal;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.util.StringUtils;
 
 import edu.emory.mathcs.backport.java.util.Arrays;
 
@@ -28,58 +31,194 @@ import edu.emory.mathcs.backport.java.util.Arrays;
 public class ReleaserProperties {
 
 	/**
-	 * URL to Spring Cloud Release Git repository
+	 * By default Releaser assumes running the program from the current working directory.
+	 * If you want to change this behaviour - just change this value.
 	 */
-	private String springCloudReleaseGitUrl = "https://github.com/spring-cloud/spring-cloud-release";
+	private String workingDir;
 
-	/**
-	 * Where should the Spring Cloud Release repo get cloned to. If {@code null} defaults to a temporary directory
-	 */
-	private String cloneDestinationDir;
+	private Git git = new Git();
 
-	/**
-	 * List of regular expressions of ignored poms. Defaults to test projects and samples.
-	 */
-	@SuppressWarnings("unchecked")
-	private List<String> ignoredPomRegex = Arrays.asList(new String[] {
-			"^.*spring-cloud-contract-maven-plugin/src/test/projects/.*$",
-			"^.*samples/standalone.*$"
-	});
+	private Pom pom = new Pom();
 
-	/**
-	 * Which branch of Spring Cloud Release should be checked out. Defaults to {@code master}
-	 */
-	private String branch = "master";
+	private Maven maven = new Maven();
 
-	public String getSpringCloudReleaseGitUrl() {
-		return this.springCloudReleaseGitUrl;
+	private Map<String, String> fixedVersions = new HashMap<>();
+
+	public static class Git {
+
+		/**
+		 * URL to Spring Cloud Release Git repository
+		 */
+		private String springCloudReleaseGitUrl = "https://github.com/spring-cloud/spring-cloud-release";
+
+		/**
+		 * Where should the Spring Cloud Release repo get cloned to. If {@code null} defaults to a temporary directory
+		 */
+		private String cloneDestinationDir;
+
+		/**
+		 * GitHub OAuth token to be used to interact with GitHub repo
+		 */
+		private String oauthToken;
+
+		public String getSpringCloudReleaseGitUrl() {
+			return this.springCloudReleaseGitUrl;
+		}
+
+		public void setSpringCloudReleaseGitUrl(String springCloudReleaseGitUrl) {
+			this.springCloudReleaseGitUrl = springCloudReleaseGitUrl;
+		}
+
+		public String getCloneDestinationDir() {
+			return this.cloneDestinationDir;
+		}
+
+		public void setCloneDestinationDir(String cloneDestinationDir) {
+			this.cloneDestinationDir = cloneDestinationDir;
+		}
+
+		public String getOauthToken() {
+			return this.oauthToken;
+		}
+
+		public void setOauthToken(String oauthToken) {
+			this.oauthToken = oauthToken;
+		}
 	}
 
-	public void setSpringCloudReleaseGitUrl(String springCloudReleaseGitUrl) {
-		this.springCloudReleaseGitUrl = springCloudReleaseGitUrl;
+	public static class Pom {
+
+		/**
+		 * Which branch of Spring Cloud Release should be checked out. Defaults to {@code master}
+		 */
+		private String branch = "master";
+
+		/**
+		 * List of regular expressions of ignored poms. Defaults to test projects and samples.
+		 */
+		@SuppressWarnings("unchecked")
+		private List<String> ignoredPomRegex = Arrays.asList(new String[] {
+				"^.*spring-cloud-contract-maven-plugin/src/test/projects/.*$",
+				"^.*spring-cloud-contract-maven-plugin/target/.*$",
+				"^.*samples/standalone.*$"
+		});
+
+		public String getBranch() {
+			return this.branch;
+		}
+
+		public void setBranch(String branch) {
+			this.branch = branch;
+		}
+
+		public List<String> getIgnoredPomRegex() {
+			return this.ignoredPomRegex;
+		}
+
+		public void setIgnoredPomRegex(List<String> ignoredPomRegex) {
+			this.ignoredPomRegex = ignoredPomRegex;
+		}
 	}
 
-	public String getCloneDestinationDir() {
-		return this.cloneDestinationDir;
+	public static class Maven {
+
+		/**
+		 * Command to be executed to build the project
+		 */
+		private String buildCommand = "./mvnw clean install -Pdocs";
+
+		/**
+		 * Command to be executed to deploy a built project
+		 */
+		private String deployCommand = "./mvnw deploy -DskipTests -Pfast";
+
+		/**
+		 * Command to be executed to deploy a built project. If present "{{version}}" will be replaced by the
+		 * provided version
+		 */
+		private String[] publishDocsCommands = {
+				"mkdir -p target",
+				"wget https://raw.githubusercontent.com/spring-cloud/spring-cloud-build/master/docs/src/main/asciidoc/ghpages.sh -O target/gh-pages.sh",
+				"chmod +x target/gh-pages.sh",
+				"./target/gh-pages.sh -v {{version}} -c"
+		};
+
+		/**
+		 * Max wait time in minutes for the process to finish
+		 */
+		private long waitTimeInMinutes = 20;
+
+		public String getBuildCommand() {
+			return this.buildCommand;
+		}
+
+		public void setBuildCommand(String buildCommand) {
+			this.buildCommand = buildCommand;
+		}
+
+		public long getWaitTimeInMinutes() {
+			return this.waitTimeInMinutes;
+		}
+
+		public void setWaitTimeInMinutes(long waitTimeInMinutes) {
+			this.waitTimeInMinutes = waitTimeInMinutes;
+		}
+
+		public String getDeployCommand() {
+			return deployCommand;
+		}
+
+		public void setDeployCommand(String deployCommand) {
+			this.deployCommand = deployCommand;
+		}
+
+		public String[] getPublishDocsCommands() {
+			return this.publishDocsCommands;
+		}
+
+		public void setPublishDocsCommands(String[] publishDocsCommands) {
+			this.publishDocsCommands = publishDocsCommands;
+		}
 	}
 
-	public void setCloneDestinationDir(String cloneDestinationDir) {
-		this.cloneDestinationDir = cloneDestinationDir;
+	public String getWorkingDir() {
+		return StringUtils.hasText(this.workingDir) ?
+				this.workingDir : System.getProperty("user.dir");
 	}
 
-	public String getBranch() {
-		return this.branch;
+	public void setWorkingDir(String workingDir) {
+		this.workingDir = workingDir;
 	}
 
-	public void setBranch(String branch) {
-		this.branch = branch;
+	public Git getGit() {
+		return this.git;
 	}
 
-	public List<String> getIgnoredPomRegex() {
-		return this.ignoredPomRegex;
+	public void setGit(Git git) {
+		this.git = git;
 	}
 
-	public void setIgnoredPomRegex(List<String> ignoredPomRegex) {
-		this.ignoredPomRegex = ignoredPomRegex;
+	public Pom getPom() {
+		return this.pom;
+	}
+
+	public void setPom(Pom pom) {
+		this.pom = pom;
+	}
+
+	public Maven getMaven() {
+		return this.maven;
+	}
+
+	public void setMaven(Maven maven) {
+		this.maven = maven;
+	}
+
+	public Map<String, String> getFixedVersions() {
+		return this.fixedVersions;
+	}
+
+	public void setFixedVersions(Map<String, String> fixedVersions) {
+		this.fixedVersions = fixedVersions;
 	}
 }

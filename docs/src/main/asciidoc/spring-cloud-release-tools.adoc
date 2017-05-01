@@ -8,46 +8,130 @@
 :toclevels: 8
 :nofooter:
 
-Spring Cloud Release Tools
-====================
+== Spring Cloud Release Tools
 
-This project can be used to
+Spring Cloud projects reuse the same pattern of building and deploying the applications. That's
+why this tool makes it easy to automate the release / dependency update process of our applications.
 
-- update all versions in your Spring Cloud Project according to the Spring Cloud Release setup
+=== What does it do?
 
-== How to run it
+- Clones the Spring Cloud Release project and picks all versions (Boot + Cloud projects)
+- Modifies the project versions with values from SC-Release
+  * throws an exception when we bump versions to release and there's a SNAPSHOT version referenced in the POM
+- Performs the build and checks if the `docs` modules have properly created the documentation
+  * throws an exception when in the `docs` module there's an unresolved tag in any HTML file
+- Commits changed poms (ONLY FOR NON-SNAPSHOT VERSIONS)
+- Creates a tag for the release / milestone (ONLY FOR NON-SNAPSHOT VERSIONS)
+- Runs the deployment of the artifacts
+- Publishes the docs (to `spring-cloud-static` for non-snapshots, to `gh-pages` for snapshots)
+- Reverts back to snapshots, bumps the version by a patch (`1.0.1.RELEASE` -> `1.0.2.BUILD-SNAPSHOT`) (ONLY FOR RELEASE VERSIONS)
+- Closes the milestone on Github (e.g. `v1.0.1.RELEASE`) (ONLY FOR NON-SNAPSHOT VERSIONS)
+- Generates an email template under `target/email.txt` (ONLY FOR NON-SNAPSHOT VERSIONS)
+- Generates a blog template under `target/blog.md` (ONLY FOR NON-SNAPSHOT VERSIONS)
 
-Currently we only support running the releaser to update the poms from Java
+=== How to run it
+
+Currently we only support running the Releaser to update the poms from Java
 
 Go to your project (e.g. Spring Cloud Sleuth)
 
 [source,bash]
 ----
-git clone https://github.com/spring-cloud/spring-cloud-sleuth
-cd spring-cloud-sleuth
-mkdir -p target
-wget http://repo.spring.io/libs-milestone/org/springframework/cloud/internal/spring-cloud-release-tools-spring/1.0.0.M1/spring-cloud-release-tools-spring-1.0.0.M1.jar -O target/spring-cloud-release-tools-spring-1.0.0.M1.jar
-java -jar ~target/spring-cloud-release-tools-spring-1.0.0.M1.jar
+$ git clone git@github.com:spring-cloud/spring-cloud-sleuth.git
+$ cd spring-cloud-sleuth
+$ wget http://repo.spring.io/libs-milestone/org/springframework/cloud/internal/spring-cloud-release-tools-spring/1.0.0.M1/spring-cloud-release-tools-spring-1.0.0.M1.jar -O spring-cloud-release-tools-spring-1.0.0.M1.jar
+$ java -jar spring-cloud-release-tools-spring-1.0.0.M1.jar
 ----
 
 The application will start running from your working directory.
 
-=== Specifying A Branch
+TIP:  It is important that you clone the repository you are going to release using SSH in order for the
+`releaser` to be able to push tags and commit changes automatically.
 
-By deafult the releaser will default to using the `master` branch of `spring-cloud-release`.
-If you would like to use another branch you can specify it using the `releaser.branch` property.
+You will see text similar to this one
+
+[source]
+----
+=== WHAT DO YOU WANT TO DO? ===
+
+0) Perform a full release of this project without interruptions
+1) Perform a full release of this project in a verbose mode (you'll be asked about skipping steps)
+2) Update poms with versions from Spring Cloud Release
+3) Build the project
+4) Commit, tag and push the tag
+5) Deploy the artifacts to Artifactory
+6) Publish the docs
+7) Go back to snapshots and bump originalVersion by patch
+8) Push the commits
+9) Close the milestone at Github
+10) Create email / tweet etc. templates
+
+
+You can press 'q' to quit
+----
+
+Just pick a number and continue! Pick either a full release or single steps.
+
+TIP: Read before picking a number cause it might have changed between tool releases ;)
+
+=== Project options
+
+- `releaser.fixed-versions` - A String to String mapping of manually set versions. E.g. `"spring-cloud-cli" -> "1.0.0.RELEASE"` will set
+the `spring-cloud-cli.version` to `1.0.0.RELEASE` regardless of what was set in `spring-cloud-release` project
+- `releaser.git.clone-destination-dir` - Where should the Spring Cloud Release repo get cloned to. If null defaults to a temporary directory
+- `releaser.git.spring-cloud-release-git-url` - URL to Spring Cloud Release Git repository. Defaults to `https://github.com/spring-cloud/spring-cloud-release`
+- `releaser.git.oauth-token` - GitHub OAuth token to be used to interact with GitHub repo.
+- `releaser.maven.build-command` - Command to be executed to build the project. Defaults to `./mvnw clean install -Pdocs`
+- `releaser.maven.deploy-command` - Command to be executed to deploy a built project". Defaults to `./mvnw deploy -DskipTests -Pfast`
+- `releaser.maven.publish-docs-commands` - Command to be executed to deploy a built project. If present `{{version}}` will be replaced by the proper version.
+Defaults to the standard Spring Cloud wget and execution of ghpages.
+- `releaser.maven.wait-time-in-minutes` - Max wait time in minutes for the process to finish. Defaults to `20`
+- `releaser.pom.branch` - Which branch of Spring Cloud Release should be checked out. Defaults to "master",
+- `releaser.pom.ignored-pom-regex` - List of regular expressions of ignored poms. Defaults to test projects and samples.,
+- `releaser.working-dir` - By default Releaser assumes running the program from the current working directory.
+
+TIP: You can pass the options either via system properties or via application arguments.
+Example for system properties: `java -Dreleaser.pom.branch=Camden.SR6 -jar target/spring-cloud-release-tools-spring-1.0.0.M1.jar`
+Example for application argumemts: `java -jar target/spring-cloud-release-tools-spring-1.0.0.M1.jar --releaser.pom.branch=Camden.SR6`
+
+=== Examples
+
+==== Keeping configuration in the project
+
+If your project has some custom configuration (e.g. Spring Cloud Contract needs a script to be executed
+to build the project and properly merge the docs) then you can put a file named e.g. `releaser.yml` under `config`
+folder and run your application like this:
 
 [source,bash]
 ----
-java -jar ~target/spring-cloud-release-tools-spring-1.0.0.M1.jar --Dreleaser.branch=Camden.SR6
+$ wget http://repo.spring.io/libs-milestone/org/springframework/cloud/internal/spring-cloud-release-tools-spring/1.0.0.M1/spring-cloud-release-tools-spring-1.0.0.M1.jar -O ../spring-cloud-release-tools-spring-1.0.0.M1.jar
+$ java -jar target/spring-cloud-release-tools-spring-1.0.0.M1.jar --spring.config.name=releaser
 ----
 
-== Future plans
-In the future it can also:
+TIP: Notice that we're downloading the jar to a parent folder, not to `target`. That's because `target` get cleaned
+during the build process
 
-- commit the changed values
-- perform a release
+==== Specifying A Branch
 
-Other plans:
+By deafult the releaser will default to using the `master` branch of `spring-cloud-release`.
+If you would like to use another branch you can specify it using the `releaser.pom.branch` property.
 
-- add a Maven plugin to perform the work from Maven
+[source,bash]
+----
+$ java -jar spring-cloud-release-tools-spring-1.0.0.M1.jar --releaser.pom.branch=Camden.SR6
+----
+
+==== Using Environment Variables
+
+In some cases it might be easier to specify environment variables instead of passing parameters to
+`releaser`.  For example, you might want to use environment variables if you are going to be
+releasing multiple projects, this keeps you from having to specify the same parameters for
+each release
+
+[source,bash]
+----
+$ export RELEASER_POM_BRANCH=Dalston.RELEASE
+$ export RELEASER_GIT_OAUTH_TOKEN=...
+$ wget http://repo.spring.io/libs-milestone/org/springframework/cloud/internal/spring-cloud-release-tools-spring/1.0.0.M1/spring-cloud-release-tools-spring-1.0.0.M1.jar -O spring-cloud-release-tools-spring-1.0.0.M1.jar
+$ java -jar target/spring-cloud-release-tools-spring-1.0.0.M1.jar --releaser.working-dir=/path/to/project/root
+----
